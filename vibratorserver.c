@@ -5,6 +5,7 @@
 #include <sys/un.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "server-vibrator", __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "server-vibrator", __VA_ARGS__))
@@ -37,7 +38,8 @@ static int nextRequestId() {
  * The socket code doesn't require null termination on the filename, but
  * we do it anyway so string functions work.
  */
-static int makeAddr(const char* name, struct sockaddr_un* pAddr, socklen_t* pSockLen) {
+static int makeAddr(const char* name, struct sockaddr_un* pAddr,
+		socklen_t* pSockLen) {
 	int nameLen = strlen(name);
 	if (nameLen >= (int) sizeof(pAddr->sun_path) - 1) /* too long? */
 		return -1;
@@ -46,6 +48,12 @@ static int makeAddr(const char* name, struct sockaddr_un* pAddr, socklen_t* pSoc
 	pAddr->sun_family = AF_LOCAL;
 	*pSockLen = 1 + nameLen + offsetof(struct sockaddr_un, sun_path);
 	return 0;
+}
+
+static int sendResponse(int sock,int code) {
+	char response[10];
+	sprintf(response, "%d\n", code);
+	return write(sock, response, strlen(response));
 }
 
 /**
@@ -79,9 +87,8 @@ void* do_vibrate(void* param) {
 		LOGI("On Command. Duration: %d", duration);
 
 		if (duration > 0) {
-			char response[10];
-			sprintf(response,"%d\n",nextRequestId());
-			write(clientSock,response,strlen(response));
+
+			sendResponse(clientSock,nextRequestId());
 
 			int result = vibrator_on(duration);
 
@@ -93,16 +100,12 @@ void* do_vibrate(void* param) {
 		LOGI("Off Command!");
 
 		vibrator_off();
-	}
-	else if (strncmp(command, CANCEL_COMMAND, 3) == 0) {
+	} else if (strncmp(command, CANCEL_COMMAND, 3) == 0) {
 		LOGI("Cancel Command");
 
 		// We read the request Id of what has to be canceled
-	}
-	else {
-			char response[10];
-			sprintf(response,"%d\n",-1);
-			write(clientSock,response,strlen(response));
+	} else {
+		sendResponse(clientSock,-1);
 	}
 
 	fclose(socket_stream_in);
@@ -111,7 +114,50 @@ void* do_vibrate(void* param) {
 	pthread_exit(NULL);
 }
 
+/**
+ *  Makes the process a daemon
+ *
+ */
+static void daemonize() {
+	/* Our process ID and Session ID */
+		pid_t pid, sid;
+
+		/* Fork off the parent process */
+		pid = fork();
+		if (pid < 0) {
+			exit(EXIT_FAILURE);
+		}
+		/* If we got a good PID, then
+		 we can exit the parent process. */
+		if (pid > 0) {
+			exit(EXIT_SUCCESS);
+		}
+
+		/* Change the file mode mask */
+		umask(0);
+
+		/* Create a new SID for the child process */
+		sid = setsid();
+		if (sid < 0) {
+			/* Log the failure */
+			exit(EXIT_FAILURE);
+		}
+
+		/* Change the current working directory */
+		if ((chdir("/")) < 0) {
+			/* Log the failure */
+			exit(EXIT_FAILURE);
+		}
+
+		/* Close out the standard file descriptors */
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+
+}
+
 int main(int argc, char** argv) {
+	daemonize();
 
 	struct sockaddr_un sockAddr;
 	socklen_t sockLen;
@@ -135,7 +181,7 @@ int main(int argc, char** argv) {
 		pthread_exit(NULL);
 	}
 
-	pthread_mutex_init(&m_counter,NULL);
+	pthread_mutex_init(&m_counter, NULL);
 
 	vibrator_off();
 
@@ -166,7 +212,7 @@ int main(int argc, char** argv) {
 		}
 	} // while
 
-	pthread_mutexattr_destroy(&m_counter);
+	pthread_mutex_destroy(&m_counter);
 
 	return 0;
 } //main
