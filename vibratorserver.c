@@ -1,4 +1,4 @@
-#include <hardware_legacy/vibrator.h>
+
 #include <android/log.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -6,14 +6,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include "vibrator.h"
+#include "vibratorimpl.h"
 
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "server-vibrator", __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "server-vibrator", __VA_ARGS__))
 #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "server-vibrator", __VA_ARGS__))
 
-#define ON_COMMAND "on"
-#define OFF_COMMAND "off"
-#define CANCEL_COMMAND "cnc"
 
 static int request_counter = 0;
 pthread_mutex_t m_counter;
@@ -50,9 +49,11 @@ static int makeAddr(const char* name, struct sockaddr_un* pAddr,
 	return 0;
 }
 
-static int sendResponse(int sock,int code) {
+static int sendResponse(int sock,char* content) {
+	LOGI("Response to be sent: %s",content);
+
 	char response[10];
-	sprintf(response, "%d\n", code);
+	sprintf(response, "%s\n", content);
 	return write(sock, response, strlen(response));
 }
 
@@ -69,8 +70,11 @@ void* do_vibrate(void* param) {
 	// up to 6 digits for duration
 	char sduration[8];
 
+	char resp[10];
+
 	bzero(command, sizeof(command));
 	bzero(sduration, sizeof(sduration));
+	bzero(resp, sizeof(resp));
 
 	FILE *socket_stream_in = fdopen(clientSock, "r");
 
@@ -87,10 +91,12 @@ void* do_vibrate(void* param) {
 		LOGI("On Command. Duration: %d", duration);
 
 		if (duration > 0) {
+			LOGI("Before send response");
 
-			sendResponse(clientSock,nextRequestId());
+			sprintf(resp,"%d",nextRequestId());
+			sendResponse(clientSock,resp);
 
-			int result = vibrator_on(duration);
+			int result = vib_play_impl(duration,NULL);
 
 			LOGI("Vibration request sent from thread!!: Result: %d", result);
 
@@ -99,13 +105,16 @@ void* do_vibrate(void* param) {
 	} else if (strncmp(command, OFF_COMMAND, 3) == 0) {
 		LOGI("Off Command!");
 
-		vibrator_off();
+		vib_cancel_all_impl();
+
+		sendResponse(clientSock,"ok");
+
 	} else if (strncmp(command, CANCEL_COMMAND, 3) == 0) {
 		LOGI("Cancel Command");
-
-		// We read the request Id of what has to be canceled
+		sendResponse(clientSock,"ok");
+		// We read the request Id of what has to be canceled and call the vib_cancel method
 	} else {
-		sendResponse(clientSock,-1);
+		sendResponse(clientSock,"nop");
 	}
 
 	fclose(socket_stream_in);
@@ -183,7 +192,7 @@ int main(int argc, char** argv) {
 
 	pthread_mutex_init(&m_counter, NULL);
 
-	vibrator_off();
+	vib_init();
 
 	while (1) {
 		int clientSock = accept(fd, NULL, NULL);
@@ -200,7 +209,7 @@ int main(int argc, char** argv) {
 			pthread_attr_init(&tattr);
 			pthread_attr_getschedparam(&tattr, &param);
 
-			// pthread_attr_setschedpolicy(&tattr, SCHED_RR);
+			pthread_attr_setschedpolicy(&tattr, SCHED_RR);
 			param.sched_priority = 1;
 
 			int rc = pthread_create(&theThread, &tattr, do_vibrate,

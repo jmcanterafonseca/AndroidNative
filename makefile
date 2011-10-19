@@ -1,5 +1,6 @@
 APP1 := vibratorclient
 APP2 := vibratorserver
+APP3 := immvbe
 
 NDK_DIR := /Users/jmcf/Tools/android-ndk
 #NDK_DIR := ~/Android/android-ndk-1.6_r1
@@ -38,10 +39,11 @@ LDFLAGS += -L$(NDK_DIR)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/$(NDK_HO
 LDFLAGS += -nostdlib -lc  -llog -lgcc -landroid -lhardware_legacy -lwpa_client -lnetutils -lcutils -lImmVibeJ\
 	--no-undefined -z $(NDK_DIR)/platforms/android-9/arch-arm/usr/lib/crtbegin_dynamic.o $(NDK_DIR)/platforms/android-9/arch-arm/usr/lib/crtend_android.o
 
-OBJS1 += $(APP1).o
-OBJS2 += $(APP2).o
+OBJS1 += $(APP1).o vibratorlib.o
+OBJS2 += $(APP2).o immvibeimpl.o
+OBJS3 += $(APP3).o
 
-all:	client server
+all:	client server imm
 
 print: 
 	@echo $(OBJS1)
@@ -51,10 +53,15 @@ client: $(APP1)
 
 server: $(APP2)
 
+imm: $(APP3)
+
 $(APP1):	$(OBJS1)
 	$(LD) $(LDFLAGS) -o $@ $^
 	
 $(APP2):	$(OBJS2)
+	$(LD) $(LDFLAGS) -o $@ $^
+	
+$(APP3):	$(OBJS3)
 	$(LD) $(LDFLAGS) -o $@ $^	
 
 %.o:	%.c
@@ -69,12 +76,13 @@ $(APP2):	$(OBJS2)
 	$(CPP) -c $(CFLAGS) $(CPPFLAGS) $< -o $@	
 
 
-install:	$(APP1) $(APP2)
+install:	$(APP1) $(APP2) $(APP3)
 	$(SDKTOOL)/adb push $(APP1) /data/local/bin/$(APP1)
 	$(SDKTOOL)/adb shell chmod 755 /data/local/bin/$(APP1)
 	$(SDKTOOL)/adb push $(APP2) /data/local/bin/$(APP2)
 	$(SDKTOOL)/adb shell chmod 755 /data/local/bin/$(APP2)
-
+	$(SDKTOOL)/adb push $(APP3) /data/local/bin/$(APP3)
+	$(SDKTOOL)/adb shell chmod 755 /data/local/bin/$(APP3)
 
 run:
 	$(SDKTOOL)/adb shell /data/local/bin/$(APP1)
@@ -83,3 +91,4 @@ run:
 clean:
 	@rm -f $(APP1).o $(APP1)
 	@rm -f $(APP2).o $(APP2)
+	@rm -f $(APP3).o $(APP3)

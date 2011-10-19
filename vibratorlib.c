@@ -6,6 +6,11 @@
 #include <strings.h>
 #include "vibrator.h"
 
+#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "vibrator-clientlib", __VA_ARGS__))
+#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "vibrator-clientlib", __VA_ARGS__))
+#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "vibrator-clientlib", __VA_ARGS__))
+
+
 static int makeAddr(const char* name, struct sockaddr_un* pAddr,
 		socklen_t* pSockLen) {
 	int nameLen = strlen(name);
@@ -129,11 +134,11 @@ int multipleVibrate(int* pattern, int repeat) {
 	return requestPatternVibration(serialized);
 }
 
-int simpleVibrate(int duration) {
+int vib_play(int duration,PlayOptions* options) {
 	return requestVibration(duration);
 }
 
-void cancelVibrate(int requestId) {
+void vib_cancel(int requestId) {
 	char command[15];
 
 	sprintf(command,"%s\n%d\n",CANCEL_COMMAND,requestId);
@@ -145,7 +150,7 @@ void cancelVibrate(int requestId) {
 	free(response);
 }
 
-void vibrateOff() {
+void vib_cancel_all() {
 	char command[5];
 
 	sprintf(command,"%s\n",OFF_COMMAND);
